@@ -66,6 +66,7 @@ public class DragandShoot : MonoBehaviour
         CheckCollisions();
     }
 
+    //switch things around so you can bounce off of walls but not the floor - check out Boxcast as well, might work better for my detection
     private void CheckCollisions()
     {
         RaycastHit2D hit = Physics2D.Raycast(transform.position, velocity.normalized, velocity.magnitude * Time.deltaTime);
