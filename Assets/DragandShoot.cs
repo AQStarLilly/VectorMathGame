@@ -13,12 +13,17 @@ public class DragandShoot : MonoBehaviour
     [SerializeField] private float gravity = 9.8f;
     private float gravityScale = 0.5f;
 
+    [SerializeField] private int trajectoryResolution = 20;
+    [SerializeField] private LineRenderer trajectoryLine; 
+    [SerializeField] private float maxDragDistance = 3f;
+
     private float velocityThreshold = 0.05f;
     private float bounceDampingFactor = 0.7f;
 
     void Start()
     {
         Time.timeScale = 1f;
+        trajectoryLine.positionCount = 0;
     }
 
     void Update()
@@ -26,29 +31,59 @@ public class DragandShoot : MonoBehaviour
         if (Input.GetMouseButtonDown(0))
         {
             Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-            Debug.Log($"Mouse down at: {mousePos}");
 
             if(Vector2.Distance(mousePos, transform.position) < 1f)
             {
-                Debug.Log("Dragging Started.");
                 isDragging = true;
                 startDragPosition = mousePos;
+
+                trajectoryLine.positionCount = 2;
+                trajectoryLine.SetPosition(0, transform.position);
+                trajectoryLine.SetPosition(1, transform.position);
             }
+        }
+
+        if(Input.GetMouseButton(0) && isDragging)
+        {
+            Vector2 currentMousePosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+            Vector2 dragVector = startDragPosition - currentMousePosition;
+
+            if(dragVector.magnitude > maxDragDistance)
+            {
+                dragVector = dragVector.normalized * maxDragDistance;
+            }
+
+            Vector2 clampedPosition = (Vector2)transform.position + dragVector;
+            trajectoryLine.SetPosition(1, clampedPosition);
+
+            if(trajectoryLine.positionCount == 2)
+            {
+                trajectoryLine.SetPosition(1, clampedPosition);
+            }
+            //float magnitude = dragVector.magnitude;
+            //Vector2 direction = dragVector.normalized;
+
+            //Vector2 simulatedVelocity = direction * magnitude * launchForceMultiplier;
+
+           // DrawTrajectory(transform.position, simulatedVelocity);
         }
 
         if(Input.GetMouseButtonUp(0) && isDragging)
         {
+            isDragging = false;
+            trajectoryLine.positionCount = 0;
             Vector2 endDragPosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
             Vector2 dragVector = startDragPosition - endDragPosition;
-            float magnitude = dragVector.magnitude;
+
+            float magnitude = Mathf.Min(dragVector.magnitude, maxDragDistance);
             Vector2 direction = dragVector.normalized;
 
             // Apply the velocity
-            velocity = direction * magnitude * launchForceMultiplier;
-            Debug.Log($"Drag Start: {startDragPosition}, End: {endDragPosition}, Magnitude: {magnitude}, Direction: {direction}, Velocity: {velocity}");
-
-            isDragging = false;
+            velocity = direction * magnitude * launchForceMultiplier;          
+            //isDragging = false;
             isLaunched = true;
+
+            //trajectoryLine.positionCount = 0;  //clear trajectory line
         }
 
         if (isLaunched)
@@ -61,8 +96,6 @@ public class DragandShoot : MonoBehaviour
     {
         velocity.y -= gravity * gravityScale * Time.deltaTime;
         transform.position += (Vector3)(velocity * Time.deltaTime);
-        Debug.Log($"Simulated position: {transform.position}, velocity: {velocity}");
-
         CheckCollisions();
     }
 
@@ -73,19 +106,71 @@ public class DragandShoot : MonoBehaviour
         if(hit.collider != null)
         {
             Vector2 normal = hit.normal;
-            velocity = Vector2.Reflect(velocity, normal);
-
-            velocity *= bounceDampingFactor;
+            
+            if(Vector2.Dot(normal, Vector2.up) > 0.7f)
+            {
+                velocity = Vector2.zero;
+                isLaunched = false;
+                Debug.Log("Hit the ground. Stopping");
+            }
+            else if(Vector2.Dot(normal, Vector2.left) > 0.7f || Vector2.Dot(normal, Vector2.right) > 0.7f)
+            {
+                velocity = Vector2.Reflect(velocity, normal) * bounceDampingFactor;
+                Debug.Log("Hit a wall. Reflecting.");
+            }
+            else if(Vector2.Dot(normal, Vector2.down) > 0.7f)
+            {
+                velocity = Vector2.Reflect(velocity, normal) * bounceDampingFactor;
+                Debug.Log("Hit the roof. Reflecting velocity.");
+            }
 
             transform.position = hit.point + normal * 0.01f;
 
             if(velocity.magnitude < velocityThreshold)
             {
                 velocity = Vector2.zero;
-                isLaunched = false;         
+                isLaunched = false;
+                Debug.Log("Velocity too small. Stopping");
             }
-
-            Debug.Log($"Hit: {hit.collider.name}, Velocity after bounce: {velocity}");
         }
+    }
+
+    private void DrawTrajectory(Vector2 startPosition, Vector2 startVelocity)
+    {
+        Vector2 currentPosition = startPosition;
+        Vector2 currentVelocity = startVelocity;
+
+        trajectoryLine.positionCount = 0;
+        List<Vector3> trajectoryPoints = new List<Vector3>();
+
+        int maxBounces = 3;
+        int bounceCount = 0;
+
+        while(bounceCount <= maxBounces && trajectoryPoints.Count < trajectoryResolution)
+        {
+            trajectoryPoints.Add(currentPosition);
+            Vector2 nextPosition = currentPosition + currentVelocity * Time.fixedDeltaTime;
+            Vector2 trajectoryStep = nextPosition - currentPosition;
+
+            RaycastHit2D hit = Physics2D.Raycast(currentPosition, trajectoryStep.normalized, trajectoryStep.magnitude);
+            if(hit.collider != null)
+            {
+                trajectoryPoints.Add(hit.point);
+
+                Vector2 normal = hit.normal;
+                currentVelocity = Vector2.Reflect(currentVelocity, normal);
+                currentPosition = hit.point + normal * 0.01f;
+
+                bounceCount++;
+            }
+            else
+            {
+                currentPosition = nextPosition;
+                currentVelocity.y -= gravity * gravityScale * Time.fixedDeltaTime;
+            }
+        }
+
+        trajectoryLine.positionCount = trajectoryPoints.Count;
+        trajectoryLine.SetPositions(trajectoryPoints.ToArray());
     }
 }
