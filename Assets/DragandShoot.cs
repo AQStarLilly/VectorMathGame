@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using TMPro;
 
 public class DragandShoot : MonoBehaviour
 {
@@ -24,11 +25,18 @@ public class DragandShoot : MonoBehaviour
     [SerializeField] private int maxShots = 6; // Maximum allowed shots
     private int shotsUsed = 0; // Shots taken by the player
     private bool gameWon = false;
+    private bool waitingForLastShot = false;
+
+    [SerializeField] private TextMeshProUGUI shotsLeftText; 
+    [SerializeField] private TextMeshProUGUI winLoseText;
 
     void Start()
     {
         Time.timeScale = 1f;
         trajectoryLine.positionCount = 0;
+
+        UpdateShotsLeftUI();
+        winLoseText.text = "";
     }
 
     void Update()
@@ -86,9 +94,11 @@ public class DragandShoot : MonoBehaviour
             isLaunched = true;
 
             shotsUsed++;
-            if(shotsUsed >= maxShots && !gameWon)
+            UpdateShotsLeftUI();
+
+            if(shotsUsed >= maxShots)
             {
-                Debug.Log("Out of Shots! You Lose.");
+                waitingForLastShot = true;
             }
         }
 
@@ -103,6 +113,17 @@ public class DragandShoot : MonoBehaviour
         velocity.y -= gravity * gravityScale * Time.deltaTime;
         transform.position += (Vector3)(velocity * Time.deltaTime);
         CheckCollisions();
+
+        if(waitingForLastShot && velocity.magnitude < velocityThreshold)
+        {
+            isLaunched = false;
+            waitingForLastShot = false;
+
+            if (!gameWon)
+            {
+                HandleLoseCondition();
+            }
+        }
     }
 
     //switch things around so you can bounce off of walls but not the floor - check out Boxcast as well, might work better for my detection
@@ -145,9 +166,26 @@ public class DragandShoot : MonoBehaviour
     {
         if(collision.gameObject == goalZone)
         {
-            gameWon = true;
-            Debug.Log("You win!");
+            HandleWinCondition();
         }
+    }
+
+    private void HandleWinCondition()
+    {
+        gameWon = true;
+        winLoseText.text = "You Win!";
+        Time.timeScale = 0f;
+    }
+
+    private void HandleLoseCondition()
+    {
+        winLoseText.text = "Out of shots! Better luck next time";
+        Time.timeScale = 0f;
+    }
+
+    private void UpdateShotsLeftUI()
+    {
+        shotsLeftText.text = "Shots Left: " + (maxShots - shotsUsed);
     }
 
     private void DrawTrajectory(Vector2 startPosition, Vector2 startVelocity)
