@@ -20,6 +20,11 @@ public class DragandShoot : MonoBehaviour
     private float velocityThreshold = 0.05f;
     private float bounceDampingFactor = 0.7f;
 
+    [SerializeField] private GameObject goalZone; // Assign goal zone in Inspector
+    [SerializeField] private int maxShots = 6; // Maximum allowed shots
+    private int shotsUsed = 0; // Shots taken by the player
+    private bool gameWon = false;
+
     void Start()
     {
         Time.timeScale = 1f;
@@ -28,7 +33,9 @@ public class DragandShoot : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetMouseButtonDown(0))
+        if (gameWon) return;
+
+        if(Input.GetMouseButtonDown(0) && shotsUsed < maxShots)    
         {
             Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
 
@@ -48,7 +55,7 @@ public class DragandShoot : MonoBehaviour
             Vector2 currentMousePosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
             Vector2 dragVector = startDragPosition - currentMousePosition;
 
-            if(dragVector.magnitude > maxDragDistance)
+            if (dragVector.magnitude > maxDragDistance)
             {
                 dragVector = dragVector.normalized * maxDragDistance;
             }
@@ -56,16 +63,12 @@ public class DragandShoot : MonoBehaviour
             Vector2 clampedPosition = (Vector2)transform.position + dragVector;
             trajectoryLine.SetPosition(1, clampedPosition);
 
-            if(trajectoryLine.positionCount == 2)
-            {
-                trajectoryLine.SetPosition(1, clampedPosition);
-            }
-            //float magnitude = dragVector.magnitude;
-            //Vector2 direction = dragVector.normalized;
+            float magnitude = dragVector.magnitude;
+            Vector2 direction = dragVector.normalized;
 
-            //Vector2 simulatedVelocity = direction * magnitude * launchForceMultiplier;
+            Vector2 simulatedVelocity = direction * magnitude * launchForceMultiplier;
 
-           // DrawTrajectory(transform.position, simulatedVelocity);
+            DrawTrajectory(transform.position, simulatedVelocity);
         }
 
         if(Input.GetMouseButtonUp(0) && isDragging)
@@ -79,11 +82,14 @@ public class DragandShoot : MonoBehaviour
             Vector2 direction = dragVector.normalized;
 
             // Apply the velocity
-            velocity = direction * magnitude * launchForceMultiplier;          
-            //isDragging = false;
+            velocity = direction * magnitude * launchForceMultiplier;                      
             isLaunched = true;
 
-            //trajectoryLine.positionCount = 0;  //clear trajectory line
+            shotsUsed++;
+            if(shotsUsed >= maxShots && !gameWon)
+            {
+                Debug.Log("Out of Shots! You Lose.");
+            }
         }
 
         if (isLaunched)
@@ -135,10 +141,19 @@ public class DragandShoot : MonoBehaviour
         }
     }
 
+    private void OnTriggerEnter(Collider collision)
+    {
+        if(collision.gameObject == goalZone)
+        {
+            gameWon = true;
+            Debug.Log("You win!");
+        }
+    }
+
     private void DrawTrajectory(Vector2 startPosition, Vector2 startVelocity)
     {
         Vector2 currentPosition = startPosition;
-        Vector2 currentVelocity = startVelocity;
+        Vector2 currentVelocity = startVelocity * 2;
 
         trajectoryLine.positionCount = 0;
         List<Vector3> trajectoryPoints = new List<Vector3>();
@@ -146,11 +161,17 @@ public class DragandShoot : MonoBehaviour
         int maxBounces = 3;
         int bounceCount = 0;
 
+        float maxTrajectoryLength = maxDragDistance * 2;
+        float currentLength = 0f;
+
         while(bounceCount <= maxBounces && trajectoryPoints.Count < trajectoryResolution)
         {
             trajectoryPoints.Add(currentPosition);
             Vector2 nextPosition = currentPosition + currentVelocity * Time.fixedDeltaTime;
             Vector2 trajectoryStep = nextPosition - currentPosition;
+
+            currentLength += trajectoryStep.magnitude;
+            if (currentLength >= maxTrajectoryLength) break; // Stop if trajectory reaches the desired length
 
             RaycastHit2D hit = Physics2D.Raycast(currentPosition, trajectoryStep.normalized, trajectoryStep.magnitude);
             if(hit.collider != null)
